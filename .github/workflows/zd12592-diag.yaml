@@ -1,0 +1,57 @@
+name: zd12592-diag
+
+on:
+  push:
+    branches: [zd12592-e2e-test]
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    name: diag / ${{ matrix.os }} / ${{ matrix.option }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+        option: [current, unload-userns-restrict, sysctl-off]
+    steps:
+      - name: inspect
+        run: |
+          set -x
+          ls -l /etc/apparmor.d/ | grep -i -E 'bwrap|userns|unpriv' || true
+          sysctl kernel.apparmor_restrict_unprivileged_userns kernel.unprivileged_userns_clone user.max_user_namespaces || true
+          sudo aa-status 2>/dev/null | grep -i -E 'bwrap|userns|unpriv' || true
+          for f in /etc/apparmor.d/*bwrap* /etc/apparmor.d/*userns*; do [ -f "$f" ] && { echo "== $f"; cat "$f"; }; done || true
+          dpkg -l apparmor bubblewrap | grep ^ii
+          sudo apt-get install -y -qq bubblewrap >/dev/null
+          bwrap --unshare-user --bind / / true && echo "PLAIN BWRAP OK" || echo "PLAIN BWRAP FAIL"
+      - name: current setup-melange profile
+        run: |
+          sudo tee /etc/apparmor.d/local-bwrap <<"EOF2"
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          profile local-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          EOF2
+          sudo systemctl reload apparmor
+          bwrap --unshare-user --bind / / true && echo "CURRENT OK" || echo "CURRENT FAIL"
+          sudo aa-status 2>/dev/null | grep -i -E 'bwrap|userns' || true
+          cat /proc/self/attr/current; echo
+          bwrap --unshare-user --bind / / cat /proc/self/attr/current || true
+      - if: matrix.option == 'unload-userns-restrict'
+        run: |
+          set -x
+          for f in /etc/apparmor.d/bwrap-userns-restrict /etc/apparmor.d/unprivileged_userns; do
+            [ -f "$f" ] && sudo apparmor_parser -R "$f" || true
+          done
+          bwrap --unshare-user --bind / / true && echo "OPTION OK" || echo "OPTION FAIL"
+      - if: matrix.option == 'sysctl-off'
+        run: |
+          set -x
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-user --bind / / true && echo "OPTION OK" || echo "OPTION FAIL"
