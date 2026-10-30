@@ -1,0 +1,20 @@
+package:
+  name: zd12592-arch-check
+  version: 0.0.1
+  epoch: 0
+  description: verifies the build ran under the target arch
+environment:
+  contents:
+    repositories:
+      - https://packages.wolfi.dev/os
+    keyring:
+      - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    packages:
+      - wolfi-baselayout
+      - busybox
+pipeline:
+  - runs: |
+      echo "target=${{build.arch}} uname=$(uname -m)"
+      test "$(uname -m)" = "${{build.arch}}"
+      mkdir -p "${{targets.destdir}}"
+      uname -m > "${{targets.destdir}}/arch"

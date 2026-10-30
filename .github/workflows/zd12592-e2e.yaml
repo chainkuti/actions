@@ -1,0 +1,49 @@
+name: zd12592-e2e
+
+on:
+  push:
+    branches: [zd12592-e2e-test]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: ${{ matrix.variant }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04, ubuntu-latest]
+        variant: [patched, control-main]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: cat /etc/os-release | grep -E '^(VERSION|PRETTY_NAME)='; uname -m
+
+      - if: matrix.variant == 'patched'
+        uses: ./melange-build
+        with:
+          config: zd12592/melange.yaml
+          archs: x86_64,aarch64
+          sign-with-temporary-key: true
+
+      - if: matrix.variant == 'control-main'
+        uses: chainguard-dev/actions/melange-build@main
+        with:
+          config: zd12592/melange.yaml
+          archs: x86_64,aarch64
+          sign-with-temporary-key: true
+
+      - if: always()
+        run: |
+          dpkg -l | grep -E '^ii +qemu' || true
+          cat /proc/sys/fs/binfmt_misc/qemu-aarch64 || true
+          ls -R packages/ || true
+          for a in x86_64 aarch64; do
+            f=$(ls packages/$a/zd12592-arch-check-*.apk)
+            echo "$a -> $(tar -xzOf "$f" arch)"
+            test "$(tar -xzOf "$f" arch)" = "$a"
+          done
