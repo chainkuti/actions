@@ -18,7 +18,10 @@ runs:
     - name: 'Install qemu emulator binaries'
       shell: bash
       run: |
-        sudo apt update && sudo apt install -y qemu-user-static
+        sudo apt update
+        # Ubuntu 26.04+ ships the static emulators in qemu-user-binfmt;
+        # qemu-user-static is only a virtual package there.
+        sudo apt install -y qemu-user-static || sudo apt install -y qemu-user-binfmt
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version: '1.27'
